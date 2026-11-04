@@ -89,3 +89,7 @@ void muse_settings_set_hatch_host(const char *host);
 void muse_settings_set_hatch_vm(const char *vm);
 /* append=true adds to the stored token (for chunked BLE writes). */
 esp_err_t muse_settings_set_hatch_token(const char *token, bool append);
+
+/* Local speech preference, persisted; applies to the next reply. */
+bool muse_settings_speak_replies(void);
+void muse_settings_set_speak_replies(bool on);

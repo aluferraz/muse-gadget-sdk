@@ -33,6 +33,9 @@ FAKE_HEADERS = [
 
 
 class StopWatchPTT(unittest.TestCase):
+    def test_quick_tap_excludes_recording_tail(self):
+        self.run_case('voice', 42, board=0, realtime=1)
+
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()

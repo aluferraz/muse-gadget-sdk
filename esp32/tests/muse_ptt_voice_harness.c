@@ -125,7 +125,7 @@ float muse_audio_dbfs(const int16_t *p,size_t n) { (void)n; return (float)p[0]/1
 float muse_audio_level(const int16_t *p,size_t n) { assert(n); return (float)p[0]/1000; }
 
 /* Legacy path is a tripwire, not another implementation of the note engine. */
-void muse_hatch_turn_begin(void) { ++notes; if(scenario>=20) longjmp(finish,2); assert(!"PTT opened a note"); }
+void muse_hatch_turn_begin(void) { ++notes; if(scenario==42) return; if(scenario>=20) longjmp(finish,2); assert(!"PTT opened a note"); }
 void muse_hatch_turn_audio(const int16_t *p,size_t n) { (void)p;(void)n; }
 size_t muse_hatch_turn_audio_wait(const int16_t *p,size_t n,int ms) { (void)p;(void)ms;return n; }
 void muse_hatch_turn_end(void) {}
@@ -227,6 +227,7 @@ muse_voice_call_ev_t muse_voice_call_event(char *p,size_t n) {
 #endif
 
 esp_err_t muse_audio_read(int16_t *p,size_t n) {
+    if(scenario==42 && frame==10) push(MUSE_PTT_UP);
     ++frame; clock_us+=scenario==41?0:scenario==22?1000:20000; assert(frame<1200);
     if(scenario==41 && frame==2) push(MUSE_PTT_UP);
     if(scenario>=22 && scenario<=28) {
@@ -279,6 +280,14 @@ esp_err_t muse_audio_write(const int16_t *p,size_t n) {
 int main(int argc,char **argv) {
     assert(argc==2); scenario=atoi(argv[1]); s_queue=input_queue=&queue; ready=true;
     s_pre=calloc(PRE_CHUNKS,sizeof(*s_pre));
+    if(scenario==42) {
+        size_t press_frames; char why[96] = {0};
+        record(false, &press_frames, why, sizeof(why));
+        assert(short_press(press_frames));
+        assert(frame * MUSE_AUDIO_CHUNK >= MIN_HELD_FRAMES);
+        free(s_pre);
+        return 0;
+    }
     if (scenario>=20 && scenario<=21) {
         notes_mode=scenario==21; terminate_task=true; push(MUSE_PTT_DOWN); push(MUSE_PTT_UP);
         int outcome=setjmp(finish);

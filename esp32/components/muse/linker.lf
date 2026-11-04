@@ -29,3 +29,10 @@ entries:
         muse_audio (muse_extram_bss)
     else:
         * (default)
+
+[mapping:muse_tts]
+archive: libmuse.a
+entries:
+    if MUSE_ON_DEVICE_TTS = y:
+        snt_nano (muse_extram_bss)
+        nano_lex_g2p (muse_extram_bss)

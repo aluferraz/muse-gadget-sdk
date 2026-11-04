@@ -609,4 +609,13 @@ endif
             about half a second at 2 Mb/s, enough for a keyframe and the
             frames behind it.
 
+    config MUSE_ON_DEVICE_TTS
+        bool "Experimental on-device English speech"
+        depends on MUSE_HATCH && IDF_TARGET_ESP32S3 && SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY
+        default n
+        help
+            Synthesizes reply text locally with the sanoTTS E12 nano voice.
+            Adds about 1.9 MB to the app. No TTS server or phone needed.
+            English only; unknown words cause fallback to complete captions.
+
 endmenu

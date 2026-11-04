@@ -1,0 +1,25 @@
+{
+  "repository": "https://github.com/Ampixa/sanoTTS",
+  "revision": "87282046baca9db01af80103a981524ae45dcf18",
+  "source_directory": "esphome/components/sanotts",
+  "sha256": {
+    "DICTIONARY-NOTICE.md": "0586c64a2c31c904d55e47a16092bb1e9e4dbf47002e78c644c77cc68a74b4a7",
+    "LICENSE": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+    "LICENSE.MIT": "2f544ceb6a679cf706652c9df3bf8a6753197ee36456ba61665d97fbed43210e",
+    "nano_lex_g2p.c": "de65f16d1b0163baf89615401758353f75554a9ecc6d93e7778327a47310a0e4",
+    "nano_lex_g2p.h": "f5128459269078ad1436e9a6ea2996c5669316566091b0e22915fc70dabdfe9d",
+    "nano_lex_tables.c": "223e1f4c9c456ecb5fe20ed1ee70bcd4e1739b56cd8f2365acfcf97158bd1e23",
+    "nano_lex_tables.h": "a65258a76214c6ad7f9c48b2feaa38e186cf4b9a4605e121b11d1c0ecae4feea",
+    "nano_q8_meta.h": "bcfd0a68ccdd6cb97d268d4a79efed4eb72ed0d669ae5f656872fe0c621b1fa6",
+    "sanotts_model_data.c": "8fa8aacbc591d22c389ee0349937311afc41500724ec3a97cec8ce34bd3829b8",
+    "sanotts_model_data.h": "5d5ad78a97e87472d9f938f995a3145985ba405eff502a9228aab9995a05c76a",
+    "snt_arch.h": "cab84f0fc32070b6d556222be23b7b4f91dc7e2c43f399cdec1627d4ed00693a",
+    "snt_kernels_esp32s3.c": "bbe3d93cc202da1ba9941970f76eab6b6c173b37323c3c6ff5ff468fcc332fb1",
+    "snt_kernels_ref.c": "b318fcdb80c3057913eef427de7110ec49ac97d7330421dfeb4376ad5a3ef603",
+    "snt_matvec_esp32s3_asm.c": "fee80b46c660f56cbc6e4e26ada6d6ef27e083bbcdf87796a72b0df28f576701",
+    "snt_nano.c": "b10d002c333a81a1157257eeca3cf4930762c96bbe949b92b93cbe5a172e0d58",
+    "snt_nano.h": "59749fba949e52e9e6d6b66bbac818ea43813e367edbc04990d04481ae192ea6",
+    "snt_port.h": "ea50294bb811b0cbef74796300ae419e3ccbf713ec0a94a393cdec3f25ad796d",
+    "snt_port_esphome.c": "54d6bacf3cac5d17e7e6630337a2ff7eb0e0a2a3b1af104ad5086bd5cbafb7da"
+  }
+}

@@ -21,6 +21,18 @@
 # from idf_component.yml, where rules keep them out of Link-only builds.
 set(srcs)
 set(embed)
+if(CONFIG_MUSE_ON_DEVICE_TTS)
+    set(tts_srcs
+        local_tts/vendor/nano_lex_g2p.c
+        local_tts/vendor/nano_lex_tables.c
+        local_tts/vendor/sanotts_model_data.c
+        local_tts/vendor/snt_kernels_esp32s3.c
+        local_tts/vendor/snt_kernels_ref.c
+        local_tts/vendor/snt_matvec_esp32s3_asm.c
+        local_tts/vendor/snt_nano.c
+        local_tts/vendor/snt_port_esphome.c)
+    list(APPEND srcs "local_tts/muse_local_tts.cpp" "local_tts/muse_tts_text.c" "local_tts/muse_tts_pcm.c" ${tts_srcs})
+endif()
 if(CONFIG_MUSE_ENABLED)
     list(APPEND srcs
         "muse_app.c"
@@ -234,4 +246,11 @@ elseif(CONFIG_MUSE_ENABLED)
     target_compile_definitions(${lvgl_lib} PUBLIC
         "LV_ASSERT_HANDLER_INCLUDE=<stdlib.h>"
         "LV_ASSERT_HANDLER=abort()\;")
+endif()
+
+if(CONFIG_MUSE_ON_DEVICE_TTS)
+    target_include_directories(${COMPONENT_LIB} PRIVATE local_tts local_tts/vendor)
+    set_source_files_properties(${tts_srcs} PROPERTIES
+        COMPILE_DEFINITIONS "NANO_LEX_WITH_SILVER=0;SNT_NANO_FAST_MATH"
+        COMPILE_OPTIONS "-O2")
 endif()

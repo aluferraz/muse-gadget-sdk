@@ -436,3 +436,9 @@ their upstream licenses:
 
 ESP-IDF components fetched at build time (into `managed_components/`) are
 under their own licenses.
+
+### Experimental local speech in this fork
+
+The optional sanoTTS integration and its third-party licenses are described in
+[On-device English speech](docs/on-device-tts.md). Vendored files retain their upstream notices
+and mixed MIT, Apache-2.0, and GPL-3.0-or-later licensing.

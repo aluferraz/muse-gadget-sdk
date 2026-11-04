@@ -61,6 +61,7 @@ static struct {
 static SemaphoreHandle_t s_lock;
 /* StopWatch samples this at the next press, never during an active call. */
 static atomic_bool s_voice_notes;
+static atomic_bool s_speak_replies = true;
 static nvs_handle_t s_nvs;
 static muse_setting_cb_t s_listener;
 
@@ -124,6 +125,11 @@ esp_err_t muse_settings_init(void)
     if (nvs_get_u8(s_nvs, "speaker", &b) == ESP_OK) {
         s.speaker_on = b;
     }
+#if CONFIG_MUSE_ON_DEVICE_TTS
+    if (nvs_get_u8(s_nvs, "speak_replies", &b) == ESP_OK) {
+        atomic_store(&s_speak_replies, b != 0);
+    }
+#endif
     load_u8("mic_gain", &s.mic_gain);
 #if CONFIG_MUSE_BOARD_M5STACK_STOPWATCH && CONFIG_MUSE_REALTIME_VOICE
     if (nvs_get_u8(s_nvs, "voice_notes", &b) == ESP_OK) {
@@ -322,4 +328,12 @@ esp_err_t muse_settings_set_hatch_token(const char *token, bool append)
         notify(MUSE_SETTING_HATCH);
     }
     return err;
+}
+
+/* Sampled when each reply starts; never changes a running phrase. */
+bool muse_settings_speak_replies(void) { return atomic_load(&s_speak_replies); }
+void muse_settings_set_speak_replies(bool on)
+{
+    atomic_store(&s_speak_replies, on);
+    save_u8("speak_replies", on);
 }

@@ -71,6 +71,9 @@
 extern "C" {
 #include "cJSON.h"
 #include "minimp3.h"
+#if CONFIG_MUSE_ON_DEVICE_TTS
+#include "local_tts/muse_local_tts.h"
+#endif
 #include "muse_account_api.h"
 #include "muse_link.h"
 #include "muse_settings.h"
@@ -92,6 +95,9 @@ extern "C" {
 using namespace musegadgets::noise::core;
 
 static const char *TAG = "muse_chat_session";
+#if CONFIG_MUSE_ON_DEVICE_TTS
+static muse_local_tts_job_t *s_local_tts;   /* session task owns this handle */
+#endif
 
 #define NOISE_PATH "/v1/noise"
 #define NOISE_PORT 443
@@ -995,6 +1001,10 @@ static void turn_reset_streams(void)
 
 static void turn_finish(void)
 {
+#if CONFIG_MUSE_ON_DEVICE_TTS
+    muse_local_tts_release(s_local_tts);
+    s_local_tts = nullptr;
+#endif
     turn_reset_streams();
     s_turn.phase = P_IDLE;
     s_turn.dict_id = s_turn.chat_id = 0;
@@ -1608,6 +1618,18 @@ static void start_tts(void)
          * end. decode() plays it at the speaker's volume, captions following,
          * and finishes the message once it's drained.
          */
+#if CONFIG_MUSE_ON_DEVICE_TTS
+        if (muse_settings_speaker_on() && muse_settings_speak_replies() && s_turn.texts &&
+            (s_local_tts = muse_local_tts_start(s_turn.texts + i * TEXT_MAX))) {
+            m.pcm_start = s_turn.pcm_out;
+            m.pcm_frames = 0;
+            m.tts = TTS_ACTIVE;
+            s_turn.tts_msg = i;
+            s_turn.silent = false;
+            show_reply_start(m);
+            return;
+        }
+#endif
         m.pcm_start = s_turn.pcm_out;
         /* Paced to the text kept: a reply longer than CAPTION_TEXT shows what
          * was kept at reading pace, not stretched over the whole reply's time
@@ -1667,6 +1689,43 @@ static void pace_silently(void)
     }
 }
 
+#if CONFIG_MUSE_ON_DEVICE_TTS
+static void decode_local_tts(void)
+{
+    int16_t pcm[512];
+    while (xStreamBufferSpacesAvailable(s_out) >= sizeof(pcm)) {
+        size_t n = muse_local_tts_read(s_local_tts, pcm, 512);
+        if (!n) {
+            break;
+        }
+        if (s_turn.gen == s_gen.load()) {
+            mark(M_AUDIO);
+            xStreamBufferSend(s_out, pcm, n * sizeof(int16_t), 0);
+        }
+        s_turn.pcm_out += n;
+    }
+    if (muse_local_tts_done(s_local_tts)) {
+        msg_t &m = s_turn.msgs[s_turn.tts_msg];
+        m.pcm_frames = s_turn.pcm_out - m.pcm_start;
+        bool failed = muse_local_tts_status(s_local_tts) != MUSE_LOCAL_TTS_COMPLETE;
+        muse_local_tts_release(s_local_tts);
+        s_local_tts = nullptr;
+        if (failed) {
+            /* Preserve the whole answer after a partial synthesis failure.
+             * Restart caption pacing after the PCM already queued. */
+            ESP_LOGW(TAG, "local speech incomplete; showing the full reply");
+            m.pcm_start = s_turn.pcm_out;
+            s_turn.silent = true;
+            size_t shown = s_turn.texts ? CAPTION_LEN(s_turn.texts + s_turn.tts_msg * TEXT_MAX) : m.len;
+            m.pcm_frames = (uint32_t)(shown * MIC_RATE / TEXT_CHARS_PER_S);
+        } else {
+            m.tts = TTS_FINISHED;
+            s_turn.tts_msg = -1;
+        }
+    }
+}
+#endif
+
 /* Decodes buffered MP3 while the reply buffer has room. */
 static void decode(void)
 {
@@ -1677,6 +1736,10 @@ static void decode(void)
         pace_silently();
         return;
     }
+#if CONFIG_MUSE_ON_DEVICE_TTS
+    decode_local_tts();
+    return;
+#endif
     /*
      * minimp3 only takes a frame once it can see the next one's header. Given
      * less, it resets and says to skip all of it, which drops speech and clicks.
@@ -2406,7 +2469,7 @@ static size_t mp3_selftest(int16_t **pcm_out)
         return 0;
     }
     mp3dec_init(dec);
-    resampler_t rs;
+    resampler_t rs{};
     int rate = 0, frames = 0;
     size_t off = 0, n = 0;
     int64_t t0 = now_us();

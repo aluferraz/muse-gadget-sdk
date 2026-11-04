@@ -31,6 +31,9 @@
 
 #include "muse_adpcm.h"
 #include "muse_audio.h"
+#if CONFIG_MUSE_ON_DEVICE_TTS
+#include "local_tts/muse_local_tts.h"
+#endif
 #include "muse_board.h"
 #include "muse_chat.h"
 #include "muse_input.h"
@@ -80,6 +83,9 @@ static volatile float s_monitor_db = -100.0f;
 static volatile bool s_chirp;
 static volatile bool s_loopback;
 static volatile bool s_mp3test;
+#if CONFIG_MUSE_ON_DEVICE_TTS
+static atomic_bool s_ttstest;
+#endif
 static atomic_int s_call_view;
 static atomic_bool s_ptt_call;
 static atomic_bool s_shutdown;
@@ -350,6 +356,7 @@ static bool record(bool barge_in, size_t *held, char *why, size_t cap)
     }
     size_t pre = n;
     bool released = false;
+    size_t held_at_release = 0;
     size_t stop_at = MAX_FRAMES;
     while (n + MUSE_AUDIO_CHUNK <= stop_at) {
         if (muse_audio_read(s_chunk, MUSE_AUDIO_CHUNK) != ESP_OK) {
@@ -392,11 +399,14 @@ static bool record(bool barge_in, size_t *held, char *why, size_t cap)
          */
         if (!released && got_event(MUSE_PTT_UP)) {
             released = true;
+            held_at_release = n - pre;
             stop_at = n + TAIL_FRAMES < MAX_FRAMES ? n + TAIL_FRAMES : MAX_FRAMES;
         }
     }
     muse_state_set_level(0);
-    *held = n - pre;
+    /* The capture tail preserves speech, but is not time the button was held.
+     * Counting it here turns quick taps into voice notes instead of calls. */
+    *held = released ? held_at_release : n - pre;
 
     char tail[160];
     int tl = 0;
@@ -1200,6 +1210,30 @@ static void voice_task(void *arg)
                 muse_audio_chirp(1);
                 pre_reset();
             }
+#if CONFIG_MUSE_ON_DEVICE_TTS
+            if (atomic_exchange(&s_ttstest, false)) {
+                muse_state_poke();
+                muse_local_tts_job_t *test = muse_local_tts_start(
+                    "Hello. My voice is generated on this device. No phone or server is needed.");
+                if (test) {
+                    int64_t until = esp_timer_get_time() + 60000000;
+                    size_t played = 0;
+                    while (!muse_local_tts_done(test) && esp_timer_get_time() < until) {
+                        size_t n = muse_local_tts_read(test, s_chunk, MUSE_AUDIO_CHUNK);
+                        if (n) {
+                            muse_audio_write(s_chunk, n);
+                            played += n;
+                        } else {
+                            vTaskDelay(pdMS_TO_TICKS(10));
+                        }
+                    }
+                    ESP_LOGI(TAG, "local TTS test: %u samples, status=%d", (unsigned)played,
+                             muse_local_tts_status(test));
+                    muse_local_tts_release(test);
+                }
+                pre_reset();
+            }
+#endif
             if (s_mp3test) {
                 s_mp3test = false;
                 int16_t *pcm = NULL;
@@ -1352,3 +1386,10 @@ bool muse_voice_notes_waiting(void)
 {
     return s_waiting;
 }
+
+#if CONFIG_MUSE_ON_DEVICE_TTS
+void muse_voice_request_ttstest(void)
+{
+    atomic_store(&s_ttstest, true);
+}
+#endif
