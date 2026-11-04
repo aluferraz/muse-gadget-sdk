@@ -609,6 +609,17 @@ endif
             about half a second at 2 Mb/s, enough for a keyframe and the
             frames behind it.
 
+    config MUSE_PHONE_RELAY
+        bool "Experimental Android BLE internet relay (Wi-Fi disabled)"
+        default n
+        depends on IDF_TARGET_ESP32S3 && SPIRAM && !HOMEHUB_TUNNEL
+        select LWIP_NETIF_LOOPBACK
+        help
+            Dedicated relay build for an already paired gadget. Requires the
+            Android Muse Relay companion. TLS and credentials stay on the
+            gadget; only api.muse.ai and the standard VM host on port 443 are
+            reachable. Wi-Fi scans and joins are disabled. Not an IP tether.
+
     config MUSE_ON_DEVICE_TTS
         bool "Experimental on-device English speech"
         depends on MUSE_HATCH && IDF_TARGET_ESP32S3 && SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY

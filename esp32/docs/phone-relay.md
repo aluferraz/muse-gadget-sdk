@@ -1,107 +1,172 @@
-# Android phone relay proposal
+# Experimental Android Bluetooth relay
 
-Status: design investigation; no relay firmware or Android relay is implemented.
-Branch: `experiment/phone-relay`, based on the working local-speech branch.
-
-## Goal
-
-Use the gadget away from a Wi-Fi network:
+Branch: `experiment/phone-relay`. The initial firmware and Android companion
+are implemented and host-tested. The relay image also passed a board startup
+check. Android-to-gadget interoperability and cellular Muse access still
+require a phone run.
 
 ```text
-ESP32-S3 <-- Bluetooth LE --> Android companion <-- cellular --> Muse
+ESP32-S3 <-- authenticated Bluetooth LE --> Android <-- cellular --> Muse
+     TLS, credentials and Noise remain on the gadget
 ```
 
-The phone still needs internet access. Speech synthesis continues on the
-gadget. A phone hotspot is an immediate alternative, but still uses the
-gadget's Wi-Fi radio and does not meet the Bluetooth-only goal.
+The phone needs internet. A hotspot remains an alternative for the normal
+firmware, but this experimental build does not start the gadget's Wi-Fi radio.
+The S3 supports BLE only; this is an application relay, not Classic Bluetooth
+internet tethering. Existing local speech remains available.
 
-The S3 supports Bluetooth LE, not Bluetooth Classic. Android's ordinary
-Bluetooth tethering is not a transport we can simply enable on this board.
-This requires an application relay, with firmware on one side and a companion
-app on the other.
+## Build and rollback
 
-## Findings in this checkout
+Use an already Muse-paired Waveshare ESP32-S3-Touch-AMOLED-1.75 and ESP-IDF
+6.0.3. Create a separate build directory, copy the working ignored
+`sdkconfig` into it, and set:
 
-- `components/muse/muse_chat_session.cpp` directly uses ESP-TLS, upgrades to
-  WebSocket, then performs the Noise handshake. Its connection admission,
-  idle loop and readiness checks explicitly depend on `muse_wifi_connected()`.
-- `main/noise_control.cpp` owns a separate control connection. Relaying chat
-  alone is insufficient to preserve the normal device behavior.
-- VM lookup and credential refresh also need internet access. A prototype
-  that works only with a cached VM token does not prove independence from Wi-Fi.
-- `main/ble_server.c` has setup RX/TX characteristics, fragmentation and
-  notifications. These are setup protocol facilities, not an internet relay.
-  Relay traffic must use a separate service and leave pairing compatible.
-- `android/musegadgetstest` is a camera/video sample using local Wi-Fi.
-  Its manifest and transport do not provide a Bluetooth/cellular relay.
+```text
+CONFIG_HOMEHUB_TUNNEL=n
+CONFIG_MUSE_PHONE_RELAY=y
+CONFIG_LWIP_NETIF_LOOPBACK=y
+CONFIG_LWIP_MAX_SOCKETS=16
+```
 
-## Proposed transport boundary
+Keep the existing board, PSRAM, SDK token and local-TTS settings. Configure
+with the same board defaults and the new build's explicit SDKCONFIG path:
 
-Prototype an ordered, bounded byte-stream relay beneath TLS. The Android app
-opens an outbound TCP connection to an approved Muse endpoint and transfers
-bytes between that socket and BLE. TLS certificate verification, account
-credentials, WebSocket and Noise remain on the gadget. The app need not copy
-pairing tokens or implement the Muse application protocol.
+```sh
+idf.py -B build-muse-waveshare-s3-175-relay \
+  -DIDF_TARGET=esp32s3 \
+  -DSDKCONFIG=build-muse-waveshare-s3-175-relay/sdkconfig \
+  '-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;devices/sdkconfig.muse;devices/sdkconfig.muse-waveshare-s3-175' build
+```
 
-This is a design choice to validate, not an existing ESP-TLS feature switch.
-Investigate a relay-backed lwIP network interface versus a custom TLS BIO
-adapter. The network-interface approach may preserve more HTTP/TLS code but
-adds routing and encapsulation complexity. A custom adapter must cover both
-ESP-TLS sessions and account HTTP requests, including readiness and polling;
-replacing only `read` and `write` is insufficient. Select the integration
-after a minimal TLS connection works over BLE.
+Check that the resulting sdkconfig actually enables `MUSE_PHONE_RELAY`.
+The Kconfig option requires the home-network tunnel to be disabled. Use the
+normal flash recipe from that build directory, without erasing NVS. Install
+[`android/muserelay`](../../android/muserelay/README.md) on the phone.
 
-The initial relay protocol needs:
+To roll back, flash the separately retained normal Wi-Fi build. Partition
+offsets and stored Muse/Wi-Fi credentials are unchanged. Relay mode is a
+build-time choice in this prototype, not a runtime transport toggle.
 
-- Explicit open, data, credit, close and error messages with a version,
-  connection identifier and connection generation.
-- MTU-aware fragmentation, bounded reassembly and per-stream flow control.
-  BLE acceptance is not evidence that the remote socket consumed the data.
-- Strict ordering and separate control/chat streams, with bounded queues
-  and deadlines. Slow receivers must backpressure, not accumulate audio.
-- Disconnect cleanup that closes affected sockets and discards old queued
-  bytes. Reconnect establishes fresh TLS/Noise sessions; do not replay
-  partially delivered chat submissions automatically.
-- Explicit user association and authenticated BLE bonding, with a way to
-  revoke the relay phone. Forward only approved destinations and ports;
-  reject private/local destinations and revalidate DNS results.
-- Metadata-only diagnostics. Never log tokens, message bodies or PCM.
+## Integration
 
-Keep direct Wi-Fi available as a selectable transport while developing.
-Changing transports closes sessions cleanly; readiness means usable internet
-through the selected transport, not merely an active Bluetooth connection.
-Phone-relay mode must be demonstrably usable with the Wi-Fi radio stopped.
+`main/phone_relay/phone_relay.c` registers a separate authenticated BLE GATT
+service alongside existing setup and companion services. It reuses the
+existing passkey display and authenticated bonding configuration. Setup's
+RX/TX characteristics and protocol are unchanged.
 
-## Android lifecycle
+The relay worker owns two loopback listeners and at most three active
+socket streams. `socket_routes.c` uses link-time adapters for
+`lwip_getaddrinfo` and `lwip_connect`: exactly `api.muse.ai` and
+`hatch.metaaivm.com`, port 443, resolve to synthetic endpoint addresses and
+connect to the matching loopback listener. Other destinations fail closed.
+The TLS caller still receives its original hostname for certificate checks
+and SNI. ESP-TLS, account HTTP, WebSocket and Noise code retain their existing
+protocols and TLS policy; this change does not disable certificate checks.
 
-Start with a user-started `connectedDevice` foreground service and visible
-connection status. Request the required Bluetooth runtime permissions and
-associate the selected gadget. Evaluate CompanionDeviceManager and
-CompanionDeviceService for reconnection and presence handling. Follow the
-platform's foreground-service launch restrictions rather than assuming the
-process remains alive indefinitely.
+Android receives only endpoint IDs and encrypted socket bytes, connects to
+one of the same two fixed hosts, and rejects private/reserved DNS answers.
+It does not terminate TLS or hold gadget account credentials. The phone can
+observe traffic sizes and timing and can interrupt service.
 
-Use Android's current network for outbound sockets; cellular must work with
-the phone's Wi-Fi disabled. Handle network changes, lost internet, Bluetooth
-disconnects, process death and user stop explicitly. Do not promise seamless
-background operation before testing the actual phone and Android version.
+`muse_network_ready()` separates transport availability from physical Wi-Fi
+status. Relay availability gates chat admission, control startup and account
+credential maintenance. Android checks for a validated internet connection
+before relay admission; successful Muse access is established separately by
+the gadget's existing TLS and session handshakes. Relay readiness does not
+prove the server is reachable. Wi-Fi joins/scans are disabled in this build;
+the normal build retains its existing behavior.
 
-## Milestones and acceptance
+## Wire protocol v1
 
-1. BLE transport harness: malformed fragments, minimum/negotiated MTU,
-   exhausted credits, slow consumer, stale generations and repeated reconnects.
-2. Android foreground relay and one certificate-verified TLS request from
-   the gadget with its Wi-Fi stopped. Measure throughput, latency and memory.
-3. VM lookup/refresh, control registration, chat subscription and a typed
-   reply through the relay. Verify credential refresh without Wi-Fi.
-4. Short voice-note upload, reply captions and existing on-device speech.
-   Measure upload time before choosing compression or claiming realtime audio.
-5. Phone screen off, Bluetooth range loss, cellular changes, app restart and
-   revoked association. Verify bounded recovery and no duplicate submissions.
+Service UUID: `9e390001-7a46-4c8e-a950-1a00c0de0001`.
+RX (phone writes): `9e390002-7a46-4c8e-a950-1a00c0de0001`.
+TX (gadget notifies): `9e390003-7a46-4c8e-a950-1a00c0de0001`.
 
-Do not include realtime voice admission, home-network tunneling, OTA or phone
-TTS in the first milestone. Each adds separate requirements. Retain the
-known-working deployed firmware until the transport prototype is validated.
+Every GATT value is one complete frame. Its eight-byte header is:
+
+| Offset | Size | Meaning |
+|---|---|---|
+| 0 | 1 | Version, currently 1 |
+| 1 | 1 | Type |
+| 2 | 2 | Stream ID, unsigned little endian |
+| 4 | 4 | Nonzero connection epoch, little endian |
+
+Payload is at most `min(180, ATT_MTU - 3 - 8)` bytes. Default MTU 23 works
+with 12-byte data chunks; Android requests a larger MTU. This is deliberately
+conservative stop-and-wait flow control, not a throughput-optimized protocol.
+
+| Type | Direction | Meaning |
+|---|---|---|
+| 1 HELLO | Phone to gadget | Stream 0, fresh random epoch, empty payload |
+| 2 READY | Gadget to phone | Echo epoch, stream 0, empty payload |
+| 3 OPEN | Gadget to phone | New stream, one endpoint byte: 1 API, 2 VM |
+| 4 OPENED | Phone to gadget | TCP connected, empty payload |
+| 5 DATA | Either | Nonempty socket bytes |
+| 6 ACK | Either | Previous DATA consumed by the local socket |
+| 7 CLOSE | Either | Close stream, empty payload |
+
+There is one outstanding DATA per stream per direction. ACK grants the next
+packet; GATT delivery alone does not grant credit. Phone writes use ATT write
+responses and a single serialized queue. TCP handles fragmentation above the
+carrier, so TLS record boundaries need not match BLE chunks.
+
+A disconnect resets streams and queued bytes. Epochs fence old application
+frames; firmware additionally tags queued writes with a physical-connection
+generation to handle reused BLE handles. Stream IDs are never reused in an
+epoch. Reconnecting starts new TLS/Noise sessions and does not replay partial
+submissions. The existing application decides what to do with its voice-note
+backlog.
+
+## Bounds and failure behavior
+
+- Three streams, two listeners, at most one 180-byte receive chunk per stream.
+- Firmware ingress: 32 bounded frames. Android GATT writes: 32 pending frames.
+- Android socket workers: six threads and six pending tasks; each stream has
+  one reader and one writer, with one queued inbound chunk.
+- Firmware open, stalled socket delivery, notification admission and credit
+  waits: 30 seconds. Android socket connect: 10 seconds; credit and blocked
+  socket-write waits: 30 seconds. Bluetooth write: 15 seconds; admission:
+  30 seconds. Existing TLS/application deadlines can expire earlier.
+- Invalid frames and unexpected stream transitions fail the request or
+  connection. Queue exhaustion fails closed. No message bodies, audio or
+  tokens are logged by the relay.
+- Android uses a user-started `connectedDevice` foreground service and five
+  bounded reconnect attempts. Process death and phone restart require opening
+  the app again. Background continuity is not yet established.
+
+## Validation and remaining work
+
+Host checks exercise the actual firmware worker with fake BLE callbacks and
+real loopback sockets, plus the production Java socket carrier. They cover
+unauthenticated input, default-MTU chunking, credit backpressure, timeouts,
+stale epochs, disconnect/reconnect, rejected workers, C/Java parser agreement
+and confined socket routing. Android APK and both relay/normal firmware must
+build before a device trial.
+
+Validation on 2026-11-04:
+
+- Full host suite: 1,068 tests run, no failures, one optional power-profiler
+  dependency skip. Final targeted relay suite: five passing tests, including
+  an additional firmware-worker test added after the full run started.
+- Android APK builds and signature verification passes.
+- Both Waveshare 1.75 firmware variants build on ESP-IDF 6.0.3; each image is
+  0x3e1000 bytes, within the existing 4 MB slot.
+- Relay image flashed for a startup check: reached `Muse Gadget starting`,
+  advertised the device, reported `Wi-Fi radio stopped`, and reached UI ready
+  without a panic or reboot during the 20-second capture. No Android phone
+  was connected, so no remote TLS/Noise or audio transfer was exercised.
+- Restored the normal Wi-Fi/local-speech build afterward; boot logs confirmed
+  control registration and the chat connection to Muse. Pairing was retained.
+
+Required hardware acceptance: pairing passkey; control registration and chat
+with both Wi-Fi radios off; short voice-note upload and local spoken reply;
+account refresh; Bluetooth range loss; phone screen off; cellular handover;
+app stop/restart; observed throughput and memory. Do not claim these pass
+until measured on the actual phone.
+
+Custom Muse endpoints, home-network tunneling, OTA, realtime voice and
+phone-generated TTS are outside this initial prototype. DNS/connect adapters
+must be rechecked when upgrading ESP-IDF; they target its lwIP socket path.
 
 ## Platform references
 

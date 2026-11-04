@@ -139,12 +139,22 @@ if(CONFIG_HOMEHUB_VOICE)
     endif()
 endif()
 
+if(CONFIG_MUSE_PHONE_RELAY)
+    list(APPEND GADGET_SRCS "phone_relay/phone_relay.c" "phone_relay/socket_routes.c")
+endif()
+
 idf_component_register(
     SRCS ${GADGET_SRCS}
     INCLUDE_DIRS "."
     PRIV_INCLUDE_DIRS "../avatar"
     REQUIRES ${GADGET_REQUIRES}
 )
+
+if(CONFIG_MUSE_PHONE_RELAY)
+    target_link_libraries(${COMPONENT_LIB} INTERFACE
+        "-Wl,--wrap=lwip_getaddrinfo" "-Wl,--wrap=lwip_connect"
+        "-Wl,-u,__wrap_lwip_getaddrinfo" "-Wl,-u,__wrap_lwip_connect")
+endif()
 
 # fast_gcm.c takes over ESP-IDF's one-shot AES-GCM entry points (PSA's AES-GCM
 # driver calls them across archives, so the linker can redirect them).

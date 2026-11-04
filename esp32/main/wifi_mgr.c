@@ -219,7 +219,9 @@ void wifi_mgr_init(void) {
         .policy = WIFI_COUNTRY_POLICY_MANUAL,
     };
     ESP_ERROR_CHECK(esp_wifi_set_country(&country));
+#if !CONFIG_MUSE_PHONE_RELAY
     ESP_ERROR_CHECK(esp_wifi_start());
+#endif
 #if SOC_WIFI_SUPPORT_5G
     ESP_ERROR_CHECK(esp_wifi_set_band_mode(WIFI_BAND_MODE_AUTO));
 #endif
@@ -240,6 +242,9 @@ void wifi_mgr_init(void) {
 }
 
 bool wifi_mgr_connect(const char *ssid, const char *password, int timeout_ms) {
+#if CONFIG_MUSE_PHONE_RELAY
+    return false;
+#endif
     if (!s_inited) wifi_mgr_init();
 
     TickType_t started = xTaskGetTickCount();
@@ -434,6 +439,9 @@ esp_netif_t *wifi_mgr_get_netif(void) {
 
 int wifi_mgr_scan(wifi_scan_entry_t *out, int max_entries, uint8_t channel,
                   const char *target_ssid) {
+#if CONFIG_MUSE_PHONE_RELAY
+    return 0;
+#endif
     if (!s_inited || !out || max_entries <= 0) return 0;
 
     // The driver refuses to scan while a join is winding down

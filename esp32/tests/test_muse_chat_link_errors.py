@@ -71,7 +71,7 @@ static int64_t now=10000000;
 static int64_t esp_timer_get_time(void) { return now; }
 static uint32_t esp_random(void) { return 42; }
 static bool muse_link_hatch_linked(void) { return true; }
-static bool muse_wifi_connected(void) { return true; }
+static bool muse_network_ready(void) { return true; }
 static bool muse_link_req_ready(void) { return true; }
 #define MUSE_LINK_REQ_TOO_LARGE (-2)   /* muse_link.h */
 typedef void (*frame_fn)(void *,int,const uint8_t *,size_t,bool);

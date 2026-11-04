@@ -39,6 +39,7 @@
 #include "wifi_mgr.h"
 
 #include "muse_ble.h"
+#include "phone_relay/phone_relay.h"
 #include "muse_board.h"
 #include "muse_input.h"
 #include "muse_link.h"
@@ -174,6 +175,11 @@ static void set_fail(const char *why) {
 
 static void op_wifi_status(muse_wifi_status_t *out) {
     memset(out, 0, sizeof(*out));
+#if CONFIG_MUSE_PHONE_RELAY
+    out->state = MUSE_WIFI_OFF;
+    strlcpy(out->detail, "Using phone relay", sizeof(out->detail));
+    return;
+#endif
     portENTER_CRITICAL(&s_lock);
     first_ssid_locked(out->ssid, sizeof(out->ssid));
     strlcpy(out->detail, s_fail, sizeof(out->detail));
@@ -501,7 +507,7 @@ static void keeper_task(void *arg) {
     uint32_t pending = KEEP_BLE;
     bool napped = false;
     bool setup_done = config_setup_complete();
-    if (setup_done && muse_settings_ble_on()) {
+    if (setup_done && muse_settings_ble_on() && !phone_relay_enabled()) {
         // Registered devices boot with the phone companion off; the settings
         // switch turns it on until the next restart.
         ESP_LOGI(TAG, "registered; phone setup BLE off at boot");
@@ -533,7 +539,11 @@ static void keeper_task(void *arg) {
             setup_done = done;
         }
         if (pending & KEEP_BLE) {
+#if CONFIG_MUSE_PHONE_RELAY
+            app_ble_companion_set(true);
+#else
             app_ble_companion_set(muse_settings_ble_on());
+#endif
         }
         if (pending & KEEP_WIFI) {
             backoff = RETRY_MIN_US;
@@ -547,7 +557,7 @@ static void keeper_task(void *arg) {
 
         bool have = s_ssid[0] != '\0' || WIFI_OVERRIDE;
         napped = napped && s_nap;
-        if (!muse_settings_wifi_on() || !have) {
+        if (phone_relay_enabled() || !muse_settings_wifi_on() || !have) {
             if (wifi_mgr_is_connected()) {
                 ESP_LOGI(TAG, "wifi %s; disconnecting", have ? "off" : "forgotten");
                 wifi_mgr_disconnect();

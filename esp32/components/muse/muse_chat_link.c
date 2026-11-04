@@ -787,7 +787,7 @@ void muse_hatch_status(muse_hatch_status_t *out)
     if (!muse_link_hatch_linked()) {
         out->state = MUSE_HATCH_NOT_SET;
         strlcpy(out->detail, "Pair in the Muse app", sizeof(out->detail));
-    } else if (!muse_wifi_connected()) {
+    } else if (!muse_network_ready()) {
         out->state = MUSE_HATCH_OFFLINE;
         strlcpy(out->detail, "Waiting for Wi-Fi", sizeof(out->detail));
     } else if (muse_link_req_ready()) {
@@ -827,7 +827,7 @@ const char *muse_hatch_state_name(muse_hatch_state_t state)
 
 bool muse_hatch_ready(void)
 {
-    return s_events && muse_link_hatch_linked() && muse_wifi_connected() && muse_link_req_ready();
+    return s_events && muse_link_hatch_linked() && muse_network_ready() && muse_link_req_ready();
 }
 
 void muse_hatch_turn_begin(void)

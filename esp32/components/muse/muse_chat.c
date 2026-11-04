@@ -52,7 +52,7 @@ bool muse_hatch_configured(void)
 
 void muse_hatch_test(void)
 {
-    if (!muse_hatch_configured() || !muse_wifi_connected()) {
+    if (!muse_hatch_configured() || !muse_network_ready()) {
         return;
     }
     muse_hatch_report(MUSE_HATCH_TESTING, "Connecting...");
@@ -79,9 +79,13 @@ void muse_hatch_status(muse_hatch_status_t *out)
     strlcpy(out->detail, s_detail, sizeof(out->detail));
     strlcpy(out->vm_id, s_vm_id, sizeof(out->vm_id));
     portEXIT_CRITICAL(&s_lock);
-    if (!muse_wifi_connected() && out->state != MUSE_HATCH_TESTING) {
+    if (!muse_network_ready() && out->state != MUSE_HATCH_TESTING) {
         out->state = MUSE_HATCH_OFFLINE;
+#if CONFIG_MUSE_PHONE_RELAY
+        strlcpy(out->detail, "Connect the relay phone", sizeof(out->detail));
+#else
         strlcpy(out->detail, "Waiting for Wi-Fi", sizeof(out->detail));
+#endif
     } else if (out->state == MUSE_HATCH_UNTESTED && !out->detail[0]) {
         strlcpy(out->detail, "Connects when you talk", sizeof(out->detail));
     }

@@ -53,6 +53,7 @@
 #include "ble_commands.h"
 #endif
 #include "ble_server.h"
+#include "phone_relay/phone_relay.h"
 #include "helper_task.h"
 #include "factory_test.h"
 #include "vm_api.h"
@@ -816,6 +817,14 @@ static bool mint_and_store_device_tokens_unlocked(const char *source_token,
     return false;
 }
 
+static bool internet_ready(void) {
+#if CONFIG_MUSE_PHONE_RELAY
+    return muse_phone_relay_ready();
+#else
+    return wifi_mgr_is_connected();
+#endif
+}
+
 static bool accept_pairing_credentials(const char *access_token,
                                        const char *refresh_token,
                                        const char *username) {
@@ -828,7 +837,7 @@ static bool accept_pairing_credentials(const char *access_token,
             identity_note_paired_sdk_token();
             store_pairing_username_unlocked(username);
         }
-    } else if (!wifi_mgr_is_connected()) {
+    } else if (!internet_ready()) {
         ESP_LOGW(TAG, "cannot mint device token before WiFi is connected");
         ok = false;
     } else {
@@ -849,7 +858,7 @@ static bool migrate_legacy_auth_token_locked(void) {
     if (!legacy) {
         return false;
     }
-    if (!wifi_mgr_is_connected()) {
+    if (!internet_ready()) {
         ESP_LOGW(TAG, "legacy auth_token present but WiFi is down; cannot mint");
         free(legacy);
         return false;
@@ -1098,7 +1107,7 @@ static void vm_auth_refresh_task(void *arg) {
     }
 
     ESP_LOGI(TAG, "refreshing VM credentials after tunnel auth rejection");
-    if (wifi_mgr_is_connected() && config_is_provisioned()) {
+    if (internet_ready() && config_is_provisioned()) {
         if (!connect_preferred_vm_with_gate_held(0)) {
             ESP_LOGW(TAG, "VM credential refresh failed after tunnel auth rejection");
         }
@@ -2277,7 +2286,7 @@ bool app_wifi_forget(const char *ssid) {
 static void muse_keep_vm_session(void) {
     static int64_t next_try;
     static int64_t backoff = MUSE_VM_RETRY_MIN_US;
-    if (!wifi_mgr_is_connected() || !config_is_provisioned() || noise_ctrl_is_running()) {
+    if (!internet_ready() || !config_is_provisioned() || noise_ctrl_is_running()) {
         next_try = 0;
         backoff = MUSE_VM_RETRY_MIN_US;
         return;
@@ -2648,6 +2657,9 @@ void app_run(void) {
 
     wifi_mgr_init();
     heap_snapshot("after wifi_mgr_init");
+#if CONFIG_MUSE_PHONE_RELAY
+    ESP_ERROR_CHECK(phone_relay_init() ? ESP_OK : ESP_ERR_NO_MEM);
+#endif
 
     noise_ctrl_init(identity_node_id(), identity_ble_name(), on_ws_control_status);
     noise_ctrl_set_command_cb(on_ws_command);
@@ -2851,6 +2863,12 @@ void app_run(void) {
         ESP_LOGI(TAG, "found provisioned creds in NVS, reconnecting (first: %s)", wifi_ssid);
     }
 
+#if CONFIG_MUSE_PHONE_RELAY
+    wifi_ssid = NULL; /* Saved Wi-Fi credentials remain untouched. */
+    start_ble_setup_server_if_needed();
+    ble_server_set_companion_advertising(true);
+    ESP_LOGI(TAG, "phone relay mode; Wi-Fi radio stopped");
+#endif
     if (wifi_ssid) {
         ui_set_status("wifi_connecting");
         led_status_set_state(LED_STATE_WIFI_CONNECTING);
@@ -2934,7 +2952,7 @@ void app_run(void) {
         // nothing has rejected the token, so the refresh endpoint is contacted
         // only once CONFIG_HOMEHUB_TOKEN_REFRESH_INTERVAL_DAYS of uptime have
         // elapsed — but this poll is what makes that interval fire at all.
-        if (wifi_mgr_is_connected() && config_is_provisioned()
+        if (internet_ready() && config_is_provisioned()
             && operation_gate_take(0, "device token maintenance")) {
             ensure_access_token_ready_with_gate_held(false, true);
             operation_gate_give();

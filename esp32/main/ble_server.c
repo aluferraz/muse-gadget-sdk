@@ -43,6 +43,7 @@
 #include "host/ble_hs.h"
 #include "host/util/util.h"
 #include "host/ble_uuid.h"
+#include "phone_relay/phone_relay.h"
 #include "host/ble_gap.h"
 #include "host/ble_gatt.h"
 #include "services/gap/ble_svc_gap.h"
@@ -806,6 +807,9 @@ bool ble_server_power_off(void) {
 static void shutdown_stack(bool release_memory) {
     if (!s_started || s_shutting_down) return;
     s_shutting_down = true;
+#if CONFIG_MUSE_PHONE_RELAY
+    phone_relay_stop();
+#endif
     s_advertising_enabled = false;
     ESP_LOGI(TAG, "shutting down BLE");
 
@@ -880,6 +884,9 @@ static void shutdown_stack(bool release_memory) {
 
 static int gap_event_cb(struct ble_gap_event *event, void *arg) {
     int companion_rc = 0;
+#if CONFIG_MUSE_PHONE_RELAY
+    phone_relay_gap_event(event);
+#endif
     if (s_companion.on_gap_event && !s_shutting_down) {
         companion_rc = s_companion.on_gap_event(event);
     }
@@ -1068,6 +1075,9 @@ void ble_server_start(const char *device_name, const ble_callbacks_t *cb) {
     rc = ble_gatts_add_svcs(ft);
     if (rc != 0) ESP_LOGE(TAG, "ft gatts_add_svcs rc=%d", rc);
 
+#if CONFIG_MUSE_PHONE_RELAY
+    phone_relay_register_gatt();
+#endif
     if (s_companion.svcs) {
         rc = ble_gatts_count_cfg(s_companion.svcs);
         if (rc != 0) ESP_LOGE(TAG, "companion gatts_count_cfg rc=%d", rc);

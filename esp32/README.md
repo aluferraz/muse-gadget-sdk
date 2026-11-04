@@ -180,6 +180,14 @@ a fresh encrypted session. Because these are community devices, pairing has no
 manufacturer verification and can't prevent an active man-in-the-middle
 attack. Set it up on a network you trust.
 
+## Experimental Android phone relay
+
+This fork includes an opt-in ESP32-S3 BLE relay and an Android companion
+that forwards encrypted internet traffic while the gadget's Wi-Fi stays off.
+It has host tests and a board startup check; phone-to-Muse operation still
+needs hardware validation. See [Phone relay](docs/phone-relay.md) for the
+separate build, Android installation, limits and rollback instructions.
+
 ## USB settings in a browser
 
 The [web flasher](../web-flasher/README.md#device-settings)'s Device settings

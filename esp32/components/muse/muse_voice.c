@@ -899,7 +899,7 @@ static bool finish_note(void)
  */
 static bool can_record(void)
 {
-    if (!muse_wifi_connected()) {
+    if (!muse_network_ready()) {
         muse_wifi_apply();   /* retry now, not after the backoff */
     }
     bool ready = muse_hatch_ready();
@@ -1281,7 +1281,7 @@ static void voice_task(void *arg)
             if (muse_voice_call_ready()) run_call(true, wake ? s_pre_fill : 0);
             else {
                 muse_input_clear_call_pending(s_press_mark);
-                if (!muse_wifi_connected()) muse_wifi_apply();
+                if (!muse_network_ready()) muse_wifi_apply();
                 go_idle(not_ready_reason());
             }
             pre_reset();

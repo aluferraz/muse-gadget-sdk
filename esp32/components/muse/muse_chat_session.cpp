@@ -923,7 +923,7 @@ static bool ensure_connected(void)
     if (s_connected) {
         return true;
     }
-    if (!muse_hatch_configured() || !muse_wifi_connected()) {
+    if (!muse_hatch_configured() || !muse_network_ready()) {
         return false;
     }
     muse_hatch_report(MUSE_HATCH_TESTING, "Connecting...");
@@ -2165,7 +2165,7 @@ static void hatch_task(void *arg)
         }
 #endif
         if (!s_connected) {
-            if (!muse_wifi_connected()) {
+            if (!muse_network_ready()) {
                 s_auto_next_us = 0;
                 s_auto_backoff_us = AUTO_RETRY_MIN_US;
             } else if (muse_hatch_configured() && now_us() >= s_auto_next_us) {
@@ -2182,7 +2182,7 @@ static void hatch_task(void *arg)
         }
 
         /* Resting, Wi-Fi may nap; don't wait for the server to go quiet. */
-        if (s_resting && !muse_wifi_connected()) {
+        if (s_resting && !muse_network_ready()) {
             drop_connection("Wi-Fi down");
             continue;
         }
@@ -2298,7 +2298,7 @@ extern "C" void muse_hatch_chat_forget(void)
 
 extern "C" bool muse_hatch_ready(void)
 {
-    return s_cmds && muse_hatch_configured() && muse_wifi_connected();
+    return s_cmds && muse_hatch_configured() && muse_network_ready();
 }
 
 extern "C" void muse_hatch_turn_begin(void)

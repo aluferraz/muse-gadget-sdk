@@ -80,7 +80,7 @@ static int xQueueReceive(QueueHandle_t q, void *p, int wait)
 static int64_t esp_timer_get_time(void) { return 10000000; }
 static uint32_t esp_random(void) { return 42; }
 static bool muse_link_hatch_linked(void) { return true; }
-static bool muse_wifi_connected(void) { return true; }
+static bool muse_network_ready(void) { return true; }
 static bool muse_link_req_ready(void) { return true; }
 #define MUSE_LINK_REQ_TOO_LARGE (-2)   /* muse_link.h */
 void muse_state_page(const char *text, int *cols, int *lines) { (void)text; *cols = 16; *lines = 2; }

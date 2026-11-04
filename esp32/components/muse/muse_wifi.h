@@ -63,6 +63,18 @@ esp_err_t muse_wifi_start(void);
 void muse_wifi_apply(void);
 void muse_wifi_status(muse_wifi_status_t *out);
 bool muse_wifi_connected(void);
+#if CONFIG_MUSE_PHONE_RELAY
+#ifdef __cplusplus
+extern "C" {
+#endif
+bool muse_phone_relay_ready(void);
+#ifdef __cplusplus
+}
+#endif
+static inline bool muse_network_ready(void) { return muse_phone_relay_ready(); }
+#else
+#define muse_network_ready muse_wifi_connected
+#endif
 typedef enum {
     MUSE_WIFI_FULL,   /* the mode from before: no modem sleep, but for BLE coexistence */
     MUSE_WIFI_DOZE,   /* modem sleep between DTIM beacons: a few hundred ms extra latency */
