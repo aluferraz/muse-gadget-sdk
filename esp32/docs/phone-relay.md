@@ -1,9 +1,8 @@
 # Experimental Android Bluetooth relay
 
 Branch: `experiment/phone-relay`. The initial firmware and Android companion
-are implemented and host-tested. The relay image also passed a board startup
-check. Android-to-gadget interoperability and cellular Muse access still
-require a phone run.
+are implemented, host-tested and exercised with a Samsung S25 Ultra on
+Android 17 using cellular internet with both Wi-Fi radios off.
 
 ```text
 ESP32-S3 <-- authenticated Bluetooth LE --> Android <-- cellular --> Muse
@@ -158,7 +157,22 @@ Validation on 2026-11-04:
 - Restored the normal Wi-Fi/local-speech build afterward; boot logs confirmed
   control registration and the chat connection to Muse. Pairing was retained.
 
-Required hardware acceptance: pairing passkey; control registration and chat
+Physical phone validation on 2026-11-04:
+
+- Samsung SM-S938U (S25 Ultra), Android 17: passkey bonding succeeded;
+  negotiated ATT MTU 256; relay admission and account API HTTP 200 succeeded.
+- With gadget Wi-Fi stopped and phone Wi-Fi disabled, the chat session
+  connected and control registration was acknowledged.
+- A 4.02-second voice note was acknowledged about 43 seconds after recording
+  ended. A 75-character reply arrived and the user confirmed audible local
+  speech. This stop-and-wait prototype has significant transfer latency.
+- Restarting the gadget while the phone was locked recovered authenticated
+  Bluetooth and relay admission automatically, without a new passkey. Later
+  heartbeats reported Wi-Fi down and the control session up.
+- Phone Wi-Fi and its temporary USB screen-awake setting were restored after
+  testing. The gadget was left running relay firmware.
+
+Remaining hardware acceptance: explicit credential refresh; control registration and chat
 with both Wi-Fi radios off; short voice-note upload and local spoken reply;
 account refresh; Bluetooth range loss; phone screen off; cellular handover;
 app stop/restart; observed throughput and memory. Do not claim these pass
