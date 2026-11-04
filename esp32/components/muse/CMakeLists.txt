@@ -21,6 +21,10 @@
 # from idf_component.yml, where rules keep them out of Link-only builds.
 set(srcs)
 set(embed)
+if(CONFIG_MUSE_ON_DEVICE_TTS)
+    file(GLOB tts_srcs "${CMAKE_CURRENT_LIST_DIR}/local_tts/vendor/*.c")
+    list(APPEND srcs "local_tts/muse_local_tts.cpp" "local_tts/muse_tts_text.c" ${tts_srcs})
+endif()
 if(CONFIG_MUSE_ENABLED)
     list(APPEND srcs
         "muse_app.c"
@@ -234,4 +238,10 @@ elseif(CONFIG_MUSE_ENABLED)
     target_compile_definitions(${lvgl_lib} PUBLIC
         "LV_ASSERT_HANDLER_INCLUDE=<stdlib.h>"
         "LV_ASSERT_HANDLER=abort()\;")
+endif()
+
+if(CONFIG_MUSE_ON_DEVICE_TTS)
+    target_include_directories(${COMPONENT_LIB} PRIVATE local_tts local_tts/vendor)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE NANO_LEX_WITH_SILVER=0 SNT_NANO_FAST_MATH)
+    set_source_files_properties(${tts_srcs} PROPERTIES COMPILE_OPTIONS "-Wno-error;-O2")
 endif()

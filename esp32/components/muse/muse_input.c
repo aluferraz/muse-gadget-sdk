@@ -984,6 +984,13 @@ static void serial_task(void *arg)
         if (!muse_console_getc(&c)) {
             continue;
         }
+#if CONFIG_MUSE_ON_DEVICE_TTS
+        if (c == 't') {
+            muse_state_poke();
+            muse_voice_request_ttstest();
+            continue;
+        }
+#endif
         if (c == 'm') {
             muse_voice_request_mp3test();
         } else if (c == 'a' || c == 's') {

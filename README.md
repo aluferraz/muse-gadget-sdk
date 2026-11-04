@@ -96,3 +96,9 @@ Muse Gadgets Test can use x264 (GPL-2.0) on the phone; this repository carries n
 of its code. An APK or iPhone app you build with it is under the GPL
 ([`android/musegadgetstest/README.md`](android/musegadgetstest/README.md),
 [`ios/musegadgetstest/README.md`](ios/musegadgetstest/README.md)).
+
+### Experimental local speech in this fork
+
+The optional sanoTTS integration and its third-party licenses are described in
+[On-device English speech](esp32/docs/on-device-tts.md). Vendored files retain their upstream notices
+and mixed MIT, Apache-2.0, and GPL-3.0-or-later licensing.
