@@ -36,13 +36,13 @@ final class Protocol {
         if (epoch == 0 || type < HELLO || type > CLOSE)
             throw new IllegalArgumentException("Frame type/epoch");
         if (type == HELLO || type == READY) {
-            if (id != 0 || len != 0)
+            if (id != 0 || (type == READY ? len != 0 : !(len == 0 || (len == 1 && p[8] == 1))))
                 throw new IllegalArgumentException("Control frame");
         } else {
             if (id == 0)
                 throw new IllegalArgumentException("Stream ID");
             if (type == OPEN) {
-                if (len != 1 || p[8] < 1 || p[8] > 2)
+                if (len != 1 || p[8] < 1 || p[8] > 3)
                     throw new IllegalArgumentException("Endpoint");
             } else if (type == DATA) {
                 if (len == 0)

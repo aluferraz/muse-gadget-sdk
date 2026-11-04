@@ -187,3 +187,45 @@ must be rechecked when upgrading ESP-IDF; they target its lwIP socket path.
 - [ESP32-S3 Bluetooth support](https://docs.espressif.com/projects/esp-idf/en/v5.2/esp32s3/api-guides/bluetooth.html)
 - [Android BLE background communication](https://developer.android.com/develop/connectivity/bluetooth/ble/background)
 - [Android companion association](https://developer.android.com/develop/connectivity/bluetooth/companion-device-pairing)
+
+
+## Chirpuddle phone speech extension
+
+The `experiment/flutter-phone-tts` branch adds a local speech endpoint for the
+[Chirpuddle Android app](https://github.com/aluferraz/chirpuddle). It keeps the two
+public socket destinations unchanged. Endpoint 3 terminates inside the Android
+app and does not open a network socket. Up to four streams are now allowed, so
+speech can coexist with the three original network streams.
+
+Chirpuddle advertises support with HELLO payload `01`. The firmware still accepts
+an empty legacy HELLO, and does not send speech to clients without the capability.
+Chirpuddle requires this updated firmware; the original firmware rejects the
+extended handshake. The prototype Java app continues to send an empty HELLO.
+
+When Speak replies is enabled, the session sends a little-endian 16-bit byte
+length and 1–1023 UTF-8 bytes to loopback port 18445. These bytes travel only over
+the existing authenticated encrypted BLE link. The paired phone intentionally
+sees the reply text to synthesize it, but receives no Muse credentials.
+
+The response is `CPV1`, a one-byte disposition, and a little-endian 32-bit sample
+count. Disposition 0 requests local fallback; 1 reports completed phone playback;
+2 carries gadget audio; 3 reports explicit cancellation without fallback. Only
+mode 2 has a nonzero sample count (at most 960,000). Its payload is continuous
+IMA ADPCM, low nibble first, predictor and index initially zero, at 16 kHz mono.
+The payload is exactly `(samples + 1) / 2` bytes. No RIFF header is sent.
+
+The app defaults to Gadget output and persists the user's choice. Both enhanced
+outputs run LFM3 on the phone. Gadget mode buffers the full compressed reply in
+PSRAM before decoding into the existing audio queue. Buffering avoids underruns
+on the current stop-and-wait BLE carrier, at the cost of transfer latency.
+The speech client performs nonblocking I/O and caps each poll at 4 KiB. A job
+has a 420-second overall deadline; the enclosing voice turn has a 600-second cap
+while phone speech is active. Canceling a turn closes its stream and cancels the
+phone job. Missing support, rejected inference, invalid framing, allocation
+failure, disconnect, and timeout use the existing local voice/caption fallback.
+
+Validation: both images build for the Waveshare S3 1.75 board; host tests cover
+wire compatibility, flow control, fragmented speech headers, ADPCM decoding,
+malformed lengths, cancellation, disconnect, and deadlines. The Flutter app and
+phone synthesis path still require the S25 hardware test. Do not infer their
+performance or background reliability from the earlier relay test.

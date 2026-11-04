@@ -74,6 +74,9 @@ extern "C" {
 #if CONFIG_MUSE_ON_DEVICE_TTS
 #include "local_tts/muse_local_tts.h"
 #endif
+#if CONFIG_MUSE_PHONE_RELAY
+#include "phone_tts/muse_phone_tts.h"
+#endif
 #include "muse_account_api.h"
 #include "muse_link.h"
 #include "muse_settings.h"
@@ -95,6 +98,9 @@ extern "C" {
 using namespace musegadgets::noise::core;
 
 static const char *TAG = "muse_chat_session";
+#if CONFIG_MUSE_PHONE_RELAY
+static muse_phone_tts_job_t *s_phone_tts;
+#endif
 #if CONFIG_MUSE_ON_DEVICE_TTS
 static muse_local_tts_job_t *s_local_tts;   /* session task owns this handle */
 #endif
@@ -1001,6 +1007,10 @@ static void turn_reset_streams(void)
 
 static void turn_finish(void)
 {
+#if CONFIG_MUSE_PHONE_RELAY
+    muse_phone_tts_release(s_phone_tts);
+    s_phone_tts = nullptr;
+#endif
 #if CONFIG_MUSE_ON_DEVICE_TTS
     muse_local_tts_release(s_local_tts);
     s_local_tts = nullptr;
@@ -1618,6 +1628,18 @@ static void start_tts(void)
          * end. decode() plays it at the speaker's volume, captions following,
          * and finishes the message once it's drained.
          */
+#if CONFIG_MUSE_PHONE_RELAY
+        if (muse_settings_speaker_on() && muse_settings_speak_replies() && s_turn.texts &&
+            (s_phone_tts = muse_phone_tts_start(s_turn.texts + i * TEXT_MAX))) {
+            m.pcm_start = s_turn.pcm_out;
+            m.pcm_frames = 0;
+            m.tts = TTS_ACTIVE;
+            s_turn.tts_msg = i;
+            s_turn.silent = false;
+            show_reply_start(m);
+            return;
+        }
+#endif
 #if CONFIG_MUSE_ON_DEVICE_TTS
         if (muse_settings_speaker_on() && muse_settings_speak_replies() && s_turn.texts &&
             (s_local_tts = muse_local_tts_start(s_turn.texts + i * TEXT_MAX))) {
@@ -1726,6 +1748,40 @@ static void decode_local_tts(void)
 }
 #endif
 
+#if CONFIG_MUSE_PHONE_RELAY
+static void decode_phone_tts(void)
+{
+    int16_t pcm[512];
+    while (xStreamBufferSpacesAvailable(s_out) >= sizeof(pcm)) {
+        size_t n = muse_phone_tts_read(s_phone_tts, pcm, 512);
+        if (!n) break;
+        if (s_turn.gen == s_gen.load()) {
+            mark(M_AUDIO);
+            xStreamBufferSend(s_out, pcm, n * sizeof(int16_t), 0);
+        }
+        s_turn.pcm_out += n;
+    }
+    if (!muse_phone_tts_done(s_phone_tts)) return;
+    msg_t &m = s_turn.msgs[s_turn.tts_msg];
+    bool failed = muse_phone_tts_failed(s_phone_tts);
+    muse_phone_tts_release(s_phone_tts);
+    s_phone_tts = nullptr;
+    m.pcm_frames = s_turn.pcm_out - m.pcm_start;
+    if (failed) {
+#if CONFIG_MUSE_ON_DEVICE_TTS
+        if (s_turn.texts && (s_local_tts = muse_local_tts_start(s_turn.texts + s_turn.tts_msg * TEXT_MAX))) return;
+#endif
+        m.pcm_start = s_turn.pcm_out;
+        s_turn.silent = true;
+        size_t shown = s_turn.texts ? CAPTION_LEN(s_turn.texts + s_turn.tts_msg * TEXT_MAX) : m.len;
+        m.pcm_frames = (uint32_t)(shown * MIC_RATE / TEXT_CHARS_PER_S);
+    } else {
+        m.tts = TTS_FINISHED;
+        s_turn.tts_msg = -1;
+    }
+}
+#endif
+
 /* Decodes buffered MP3 while the reply buffer has room. */
 static void decode(void)
 {
@@ -1736,6 +1792,9 @@ static void decode(void)
         pace_silently();
         return;
     }
+#if CONFIG_MUSE_PHONE_RELAY
+    if (s_phone_tts) { decode_phone_tts(); return; }
+#endif
 #if CONFIG_MUSE_ON_DEVICE_TTS
     decode_local_tts();
     return;
@@ -1815,7 +1874,13 @@ static void check_turn(void)
             break;
         }
     }
-    if (t - s_turn.start_us > (text ? TEXT_TURN_CAP_US : TURN_CAP_US)) {
+    int64_t turn_cap = text ? TEXT_TURN_CAP_US : TURN_CAP_US;
+#if CONFIG_MUSE_PHONE_RELAY
+    /* Bounded local inference and store-before-play transfer can exceed the
+     * normal turn budget. Chat tasks still run during nonblocking speech I/O. */
+    if (!text && s_phone_tts) turn_cap = 600 * 1000000LL;
+#endif
+    if (t - s_turn.start_us > turn_cap) {
         ESP_LOGW(TAG, "turn hit the time cap");
         /* A voice turn that waited out the cap on a busy agent got no reply at all. */
         if (!text && !s_turn.nmsgs) {

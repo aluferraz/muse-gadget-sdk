@@ -31,7 +31,7 @@ static const ble_uuid128_t tx_uuid =
     BLE_UUID128_INIT(1, 0, 0xde, 0xc0, 0, 0x1a, 0x50, 0xa9, 0x8e, 0x4c, 0x46, 0x7a, 3, 0, 0x39, 0x9e);
 static uint16_t tx_handle;
 static atomic_uint connection = BLE_HS_CONN_HANDLE_NONE, epoch, mtu = 23;
-static atomic_bool subscribed, ready, ble_allowed;
+static atomic_bool subscribed, ready, ble_allowed, phone_speech;
 static atomic_uint notifying;
 static atomic_uint connection_generation;
 static QueueHandle_t incoming;
@@ -52,6 +52,7 @@ typedef struct {
 static stream_t streams[RELAY_STREAMS];
 
 bool muse_phone_relay_ready(void) { return atomic_load(&ready); }
+bool muse_phone_speech_ready(void) { return atomic_load(&ready) && atomic_load(&phone_speech); }
 static bool secure(uint16_t conn)
 {
     struct ble_gap_conn_desc d;
@@ -186,9 +187,9 @@ static void worker(void *unused)
     (void)unused;
     for (unsigned i = 0; i < RELAY_STREAMS; i++)
         streams[i].fd = -1;
-    int listeners[2] = {listener(1), listener(2)};
-    if (listeners[0] < 0 || listeners[1] < 0) {
-        for (unsigned i = 0; i < 2; i++)
+    int listeners[3] = {listener(1), listener(2), listener(3)};
+    if (listeners[0] < 0 || listeners[1] < 0 || listeners[2] < 0) {
+        for (unsigned i = 0; i < 3; i++)
             if (listeners[i] >= 0)
                 close(listeners[i]);
         ESP_LOGE(TAG, "loopback listener failed");
@@ -215,6 +216,7 @@ static void worker(void *unused)
             if (type == RELAY_HELLO) {
                 atomic_store(&ready, false);
                 reset_streams();
+                atomic_store(&phone_speech, p.size == RELAY_HEADER + 1 && p.data[RELAY_HEADER] == 1);
                 generation = pe;
                 next_id = 1;
                 atomic_store(&epoch, pe);
@@ -252,7 +254,7 @@ static void worker(void *unused)
                 close_stream(s);
             }
         }
-        for (unsigned endpoint = 1; endpoint <= 2; endpoint++) {
+        for (unsigned endpoint = 1; endpoint <= 3; endpoint++) {
             int fd = accept(listeners[endpoint - 1], NULL, NULL);
             if (fd < 0)
                 continue;

@@ -450,3 +450,10 @@ under their own licenses.
 The optional sanoTTS integration and its third-party licenses are described in
 [On-device English speech](docs/on-device-tts.md). Vendored files retain their upstream notices
 and mixed MIT, Apache-2.0, and GPL-3.0-or-later licensing.
+
+
+The experimental `experiment/flutter-phone-tts` fork branch also supports
+[Chirpuddle phone speech](docs/phone-relay.md#chirpuddle-phone-speech-extension),
+with persistent Gadget/Phone output selection in the Android app. Gadget is the
+default. Both enhanced outputs synthesize on the phone; the ESP32 retains its
+local speech fallback. This extension is awaiting on-device validation.

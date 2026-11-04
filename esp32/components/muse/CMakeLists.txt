@@ -20,6 +20,9 @@
 # needs is listed unconditionally. Managed components (LVGL, codecs, BSPs) come
 # from idf_component.yml, where rules keep them out of Link-only builds.
 set(srcs)
+if(CONFIG_MUSE_PHONE_RELAY)
+    list(APPEND srcs "phone_tts/muse_phone_tts.c")
+endif()
 set(embed)
 if(CONFIG_MUSE_ON_DEVICE_TTS)
     set(tts_srcs

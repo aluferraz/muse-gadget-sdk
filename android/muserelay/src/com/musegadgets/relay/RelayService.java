@@ -263,6 +263,10 @@ public final class RelayService extends Service {
             return;
         }
         if (p.type == Protocol.OPEN) {
+            if (p.data[0] == 3) {
+                send(new Protocol(Protocol.CLOSE, p.id, epoch, EMPTY));
+                return;
+            }
             if (pipes.size() >= Protocol.STREAMS || usedIds.contains(p.id) || usedIds.size() >= 65535) {
                 send(new Protocol(Protocol.CLOSE, p.id, epoch, EMPTY));
                 return;
