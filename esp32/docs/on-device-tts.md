@@ -87,3 +87,11 @@ at 16 kHz (6.33 seconds) to the speaker path. Phrase synthesis took 1.83,
 The test completed without a reported synthesis failure or panic. This
 verifies generation and driver delivery, not subjective audibility. A real
 Muse reply and user listening confirmation are still needed.
+
+Validation: 2 local-TTS sanitizer tests, 42 push-to-talk tests, and 18 chat
+session tests passed. The initial full-suite run reported macOS compiler
+wrapper failures; after correcting that external wrapper, all 252 tests in
+those affected modules passed. The broad suite is not wholly green: three
+e-ink setup errors require the absent pinned FreeInk checkout, one simulator
+avatar-selection test fails, and one dependency test was skipped. No changes
+to those unrelated subsystems were made.
