@@ -41,33 +41,64 @@ if it has not stopped yet, the next reply falls back to captions.
 Host tests:
 
 ```
-python3 -m unittest discover -s tests -p test_muse_local_tts.py
+python3 tools/muse/check_local_tts_vendor.py
+python3 -m unittest discover -s tests -p 'test_muse_local_tts*.py'
 ```
 
-These compile the actual dictionary and neural engine with address/undefined
-behavior sanitizers, verify non-silent finite PCM, exercise callback abort,
-and check phrase splitting at word and UTF-8 boundaries. They do not prove
-speaker audibility or device timing. Hardware observations are recorded below
-when available.
+The tests compile the real dictionary and neural engine, plus the production
+worker against deterministic platform fakes, with address/undefined-behavior
+sanitizers. They cover input bounds, malformed UTF-8, PCM chunk equivalence,
+non-finite samples, allocation failures, task creation failure, cancellation
+before and during synthesis, stalled consumers, deadline expiry, concurrent
+admission, request isolation, repeated cleanup, and the reply/caption path.
+The saved toggle is covered by `test_muse_ptt_ui.py`. Vendored file checksums
+are verified against the pinned manifest. Host tests do not establish speaker
+audibility, device scheduling, or power consumption.
+
+## Ownership and failure handling
+
+`muse_local_tts_start()` returns an opaque request handle, or NULL if the
+worker is busy, the input is invalid, or resources cannot be allocated. The
+consumer owns one reference and serializes reads, status queries and release.
+The worker owns the other reference. Release signals cancellation and returns
+without waiting; resources disappear when the last reference is released.
+The worker and its notification slot are persistent, but request buffers are
+freed after use. No producer resets a buffer another request can still read.
+
+The chat session and diagnostic test keep distinct handles. A cancelled
+request cannot cancel a subsequent request or contribute audio to it. One
+admission gate serializes the upstream engine's static scratch and lazy task
+creation. Terminal status is published after the last PCM write.
+
+If synthesis fails after some speech has played, caption pacing restarts for
+the full retained answer after queued audio. This preserves the text rather
+than silently treating a partial spoken answer as complete. The phonemizer's
+unknown-word and dropped-symbol counters are checked: a phrase with omitted
+content falls back to text instead of knowingly speaking a changed answer.
+No reply text is written to diagnostic logs.
 
 ## Bounds and limitations
 
-- English only. Unknown words can be omitted by the upstream phonemizer;
-  names, code, URLs and other languages are not reliable speech inputs.
+- English only. Names, code, URLs and other languages may trigger caption
+  fallback. The dictionary does not provide a general pronunciation model.
 - Only the text already retained for captions is spoken (at most 1023 bytes).
   Longer answers remain available in the Muse app.
 - Phrases are split at punctuation or word boundaries, at most 80 bytes.
-- One persistent synthesis worker, 16 KB PSRAM stack, 96 KB arena and
-  128 KB PCM ring plus a bounded 512 KB phrase buffer. Static neural/G2P scratch is placed in PSRAM.
+- One persistent worker with a 16 KB PSRAM stack; each live request owns a
+  128 KB PCM ring and at most 1023 bytes of text. The active worker holds a
+  96 KB arena and a bounded 512 KB phrase buffer. Neural/G2P static scratch
+  is placed in PSRAM. Retaining a finished handle retains its ring; consumers
+  release it promptly after draining.
 - The arena uses internal RAM only when at least 48 KB would remain free;
   otherwise it uses PSRAM and the scalar kernels. This may be slower than
   playback. Complete phrases are buffered before playback to prevent
   gaps within words; there can still be a pause between phrases.
-- Synthesis has a 150-second deadline checked at PCM callbacks; the existing
-  chat turn cap also applies. Cancellation is cooperative at those callbacks.
-- Failures before audio fall back to captions. A failure after partial speech
-  can leave the remainder unspoken. This is an experiment, not a complete
-  accessible read-aloud implementation.
+- Each request has a 150-second deadline checked before phrases, at PCM
+  callbacks and during bounded ring writes. The chat turn cap also applies.
+  Cancellation is cooperative; it does not preempt an in-progress phonemizer
+  or engine call before its next callback.
+- Failures fall back to full retained captions, including after partial speech.
+  This remains an experiment, not a complete accessible read-aloud implementation.
 - System tones and the MP3 test remain available. Realtime voice is a separate
   feature and its observed HTTP 404 is not fixed by this change.
 
@@ -90,11 +121,17 @@ at 16 kHz (6.33 seconds) to the speaker path. Phrase synthesis took 1.83,
 4.73, and 4.31 seconds using the PSRAM scalar path; peak arena use 48,320 B.
 The test completed without a reported synthesis failure or panic. This
 verifies generation and driver delivery, not subjective audibility. The user subsequently confirmed that spoken replies work.
+These measurements describe the earlier prototype. The ownership/failure-path
+review has been built and host-tested but has not been flashed or remeasured.
 
-Validation: 2 local-TTS sanitizer tests, 42 push-to-talk tests, and 18 chat
-session tests passed. The initial full-suite run reported macOS compiler
-wrapper failures; after correcting that external wrapper, all 252 tests in
-those affected modules passed. The broad suite is not wholly green: three
-e-ink setup errors require the absent pinned FreeInk checkout, one simulator
-avatar-selection test fails, and one dependency test was skipped. No changes
-to those unrelated subsystems were made.
+## Review validation
+
+The enabled and disabled Waveshare 1.75 builds pass on ESP-IDF 6.0.3. All
+28 focused local-TTS tests pass; the native harnesses use AddressSanitizer
+and UndefinedBehaviorSanitizer. The full ESP32 host suite ran 1,060 tests
+successfully with one skip for the optional `ppk2-api==0.9.2` benchmark
+dependency. Four additional focused cases were added and passed separately
+after that full-suite run started. The macOS run used Ninja, a pinned FreeInk checkout,
+and host compiler flag adaptations for Darwin. The enabled build remains
+0x3e1000 bytes, leaving 0x1f000 bytes in the existing 4 MB slot. The working
+device firmware was left unchanged during this source review.

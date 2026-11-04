@@ -616,6 +616,6 @@ endif
         help
             Synthesizes reply text locally with the sanoTTS E12 nano voice.
             Adds about 1.9 MB to the app. No TTS server or phone needed.
-            English only; unknown words may be omitted by the dictionary.
+            English only; unknown words cause fallback to complete captions.
 
 endmenu

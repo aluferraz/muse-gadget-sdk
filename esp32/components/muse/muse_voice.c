@@ -33,7 +33,6 @@
 #include "muse_audio.h"
 #if CONFIG_MUSE_ON_DEVICE_TTS
 #include "local_tts/muse_local_tts.h"
-static volatile bool s_ttstest;
 #endif
 #include "muse_board.h"
 #include "muse_chat.h"
@@ -84,6 +83,9 @@ static volatile float s_monitor_db = -100.0f;
 static volatile bool s_chirp;
 static volatile bool s_loopback;
 static volatile bool s_mp3test;
+#if CONFIG_MUSE_ON_DEVICE_TTS
+static atomic_bool s_ttstest;
+#endif
 static atomic_int s_call_view;
 static atomic_bool s_ptt_call;
 static atomic_bool s_shutdown;
@@ -1209,19 +1211,25 @@ static void voice_task(void *arg)
                 pre_reset();
             }
 #if CONFIG_MUSE_ON_DEVICE_TTS
-            if (s_ttstest) {
-                s_ttstest = false;
+            if (atomic_exchange(&s_ttstest, false)) {
                 muse_state_poke();
-                if (muse_local_tts_start("Hello. My voice is generated on this device. No phone or server is needed.")) {
+                muse_local_tts_job_t *test = muse_local_tts_start(
+                    "Hello. My voice is generated on this device. No phone or server is needed.");
+                if (test) {
                     int64_t until = esp_timer_get_time() + 60000000;
                     size_t played = 0;
-                    while (!muse_local_tts_done() && esp_timer_get_time() < until) {
-                        size_t n = muse_local_tts_read(s_chunk, MUSE_AUDIO_CHUNK);
-                        if (n) { muse_audio_write(s_chunk, n); played += n; }
-                        else vTaskDelay(pdMS_TO_TICKS(10));
+                    while (!muse_local_tts_done(test) && esp_timer_get_time() < until) {
+                        size_t n = muse_local_tts_read(test, s_chunk, MUSE_AUDIO_CHUNK);
+                        if (n) {
+                            muse_audio_write(s_chunk, n);
+                            played += n;
+                        } else {
+                            vTaskDelay(pdMS_TO_TICKS(10));
+                        }
                     }
-                    muse_local_tts_cancel();
-                    ESP_LOGI(TAG, "local TTS test: %u samples, failed=%d", (unsigned)played, muse_local_tts_failed());
+                    ESP_LOGI(TAG, "local TTS test: %u samples, status=%d", (unsigned)played,
+                             muse_local_tts_status(test));
+                    muse_local_tts_release(test);
                 }
                 pre_reset();
             }
@@ -1380,5 +1388,8 @@ bool muse_voice_notes_waiting(void)
 }
 
 #if CONFIG_MUSE_ON_DEVICE_TTS
-void muse_voice_request_ttstest(void) { s_ttstest = true; }
+void muse_voice_request_ttstest(void)
+{
+    atomic_store(&s_ttstest, true);
+}
 #endif
