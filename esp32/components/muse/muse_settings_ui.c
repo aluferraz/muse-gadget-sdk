@@ -118,6 +118,9 @@ static int64_t s_sdk_token_bad_us;   /* when an invalid SDK token was entered */
 static lv_obj_t *s_ble_sw, *s_ble_status;
 
 /* Sound page. */
+#if CONFIG_MUSE_ON_DEVICE_TTS
+static lv_obj_t *s_speech_sw;
+#endif
 #if CONFIG_MUSE_BOARD_M5STACK_STOPWATCH && CONFIG_MUSE_REALTIME_VOICE
 static lv_obj_t *s_notes_sw;
 #endif
@@ -1242,6 +1245,13 @@ static void set_val(lv_obj_t *l, const char *fmt, int v)
     set_text(l, buf);
 }
 
+#if CONFIG_MUSE_ON_DEVICE_TTS
+static void on_speech_sw(lv_event_t *e)
+{
+    muse_settings_set_speak_replies(lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED));
+}
+#endif
+
 static void on_speaker_sw(lv_event_t *e)
 {
     muse_settings_set_speaker_on(lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED));
@@ -1306,6 +1316,10 @@ static void build_sound_page(lv_obj_t *tile)
 #endif
     if (muse_board->audio_init) {
         s_spk_sw = switch_row(list, "Speaker", muse_settings_speaker_on(), on_speaker_sw);
+#if CONFIG_MUSE_ON_DEVICE_TTS
+        s_speech_sw = switch_row(list, "Speak replies", muse_settings_speak_replies(), on_speech_sw);
+        note(list, "Read replies aloud on this device. Applies to the next reply.");
+#endif
         s_vol_sl = slider(list, "Volume", 0, 100, muse_settings_volume(), &s_vol_val, on_volume);
     }
     s_gain_sl = slider(list, "Mic gain", 0, MUSE_MIC_GAIN_MAX / 3, muse_settings_mic_gain() / 3, &s_gain_val, on_gain);
@@ -1346,6 +1360,9 @@ static void tick_sound(void)
     }
 #if CONFIG_MUSE_BOARD_M5STACK_STOPWATCH && CONFIG_MUSE_REALTIME_VOICE
     lv_obj_set_state(s_notes_sw, LV_STATE_CHECKED, muse_settings_voice_notes());
+#endif
+#if CONFIG_MUSE_ON_DEVICE_TTS
+    if (s_speech_sw) lv_obj_set_state(s_speech_sw, LV_STATE_CHECKED, muse_settings_speak_replies());
 #endif
     bool on = muse_settings_speaker_on();   /* also toggled from the face */
     if (s_spk_sw && on != lv_obj_has_state(s_spk_sw, LV_STATE_CHECKED)) {

@@ -1615,7 +1615,7 @@ static void start_tts(void)
          * and finishes the message once it's drained.
          */
 #if CONFIG_MUSE_ON_DEVICE_TTS
-        if (muse_settings_speaker_on() && s_turn.texts &&
+        if (muse_settings_speaker_on() && muse_settings_speak_replies() && s_turn.texts &&
             muse_local_tts_start(s_turn.texts + i * TEXT_MAX)) {
             m.pcm_start = s_turn.pcm_out;
             m.pcm_frames = 0;

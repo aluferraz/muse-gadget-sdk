@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 #include <assert.h>
+#define CONFIG_MUSE_ON_DEVICE_TTS 1
 #include "muse_settings.c"
 
-static bool saved, value;
+static bool saved, value, speech_saved, speech_value;
 static int commits, notices;
 esp_err_t nvs_flash_init(void) { return ESP_OK; }
 esp_err_t nvs_flash_erase(void) { assert(!"must preserve existing NVS"); return ESP_FAIL; }
@@ -25,12 +26,14 @@ esp_err_t nvs_open(const char *ns,nvs_open_mode_t mode,nvs_handle_t *h) {
 }
 esp_err_t nvs_get_u8(nvs_handle_t h,const char *key,uint8_t *v) {
     assert(h==1);
+    if(!strcmp(key,"speak_replies") && speech_saved) { *v=speech_value; return ESP_OK; }
     if(!strcmp(key,"voice_notes") && saved) { *v=value; return ESP_OK; }
     return ESP_FAIL;
 }
 esp_err_t nvs_get_u16(nvs_handle_t h,const char *key,uint16_t *v) { (void)h;(void)key;(void)v;return ESP_FAIL; }
 esp_err_t nvs_get_str(nvs_handle_t h,const char *key,char *v,size_t *n) { (void)h;(void)key;(void)v;(void)n;return ESP_FAIL; }
 esp_err_t nvs_set_u8(nvs_handle_t h,const char *key,uint8_t v) {
+    if(!strcmp(key,"speak_replies")) { assert(h==1); speech_saved=true; speech_value=v; return ESP_OK; }
     assert(h==1 && !strcmp(key,"voice_notes")); saved=true; value=v; return ESP_OK;
 }
 esp_err_t nvs_commit(nvs_handle_t h) { assert(h==1); ++commits; return ESP_OK; }
@@ -47,5 +50,14 @@ int main(int argc,char **argv) {
     assert(muse_settings_voice_notes()==(CONFIG_MUSE_BOARD_M5STACK_STOPWATCH && CONFIG_MUSE_REALTIME_VOICE));
     muse_settings_set_voice_notes(false);
     assert(!muse_settings_voice_notes() && !value && commits==2 && notices==2);
+    assert(muse_settings_speak_replies());
+    muse_settings_set_speak_replies(false);
+    assert(!muse_settings_speak_replies() && speech_saved && !speech_value);
+    atomic_store(&s_speak_replies, true); /* reset to startup default */
+    assert(muse_settings_init()==ESP_OK && !muse_settings_speak_replies());
+    muse_settings_set_speak_replies(true);
+    atomic_store(&s_speak_replies, false);
+    assert(muse_settings_init()==ESP_OK && muse_settings_speak_replies());
+    assert(commits==4 && notices==2); /* speech does not alter speaker settings */
     return 0;
 }

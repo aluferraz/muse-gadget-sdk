@@ -29,6 +29,10 @@ Send the single lowercase character `t` to the USB console while idle and
 awake. It synthesizes: "Hello. My voice is generated on this device. No phone
 or server is needed." This test does not send a message to Muse.
 
+**Settings > Sound > Speak replies** toggles local speech, independently of
+speaker volume and system sounds. It defaults on, survives restarts, and
+applies to the next reply. Off keeps the existing text/caption behavior.
+
 For end-to-end use, hold the microphone, speak, and release. With the speaker
 on, the returned text is synthesized locally and uses the existing volume
 and caption path. Muting skips synthesis. A new turn cancels the old worker;
@@ -85,8 +89,7 @@ generated three phrases successfully, then delivered 101,206 PCM16 samples
 at 16 kHz (6.33 seconds) to the speaker path. Phrase synthesis took 1.83,
 4.73, and 4.31 seconds using the PSRAM scalar path; peak arena use 48,320 B.
 The test completed without a reported synthesis failure or panic. This
-verifies generation and driver delivery, not subjective audibility. A real
-Muse reply and user listening confirmation are still needed.
+verifies generation and driver delivery, not subjective audibility. The user subsequently confirmed that spoken replies work.
 
 Validation: 2 local-TTS sanitizer tests, 42 push-to-talk tests, and 18 chat
 session tests passed. The initial full-suite run reported macOS compiler
